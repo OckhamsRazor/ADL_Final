@@ -12,6 +12,7 @@ class Config(object):
     """Holds model hyperparams and data information."""
 
     batch_size = 100
+    test_batch_size = 4
     #embed_size = 80
     #embed_size = 80
     embed_size = 100
@@ -151,8 +152,10 @@ class DMN_PLUS(object):
 
     def get_predictions(self, output):
         """Get answer predictions from output"""
-        preds = tf.nn.softmax(output)
-        pred = tf.argmax(preds, 1)
+        #preds = tf.nn.softmax(output)
+        preds = tf.nn.softmax(output,dim=0)
+        #pred = tf.argmax(preds, 1)
+        pred = tf.argmax(preds, 0)
         return pred
       
     def add_loss_op(self, output):
@@ -403,6 +406,60 @@ class DMN_PLUS(object):
         #print "********total_steps=",total_steps
         return np.mean(total_loss), accuracy/float(total_steps)
 
+    def run_test_epoch(self, session, data, num_epoch=0, train_writer=None, train_op=None, verbose=2, train=False):
+        config = self.config
+        dp = config.dropout
+        if train_op is None:
+            train_op = tf.no_op()
+            dp = 1
+        total_steps = len(data[0]) / config.test_batch_size
+        #total_loss = []
+        #accuracy = 0
+
+ 
+        # shuffle data
+        #p = np.random.permutation(len(data[0]))
+        qp, ip, ql, il, im, a, r = data   # WE need a new data parser when testing , because there will be no a !
+        #qp, ip, ql, il, im, a, r = qp[p], ip[p], ql[p], il[p], im[p], a[p], r[p] 
+
+        pred_list = []
+        for step in range(total_steps):
+            index = range(step*config.test_batch_size,(step+1)*config.test_batch_size)
+            feed = {self.question_placeholder: qp[index],
+                  self.input_placeholder: ip[index],
+                  self.question_len_placeholder: ql[index],
+                  self.input_len_placeholder: il[index],
+                  #self.answer_placeholder: a[index],
+                  self.rel_label_placeholder: r[index],
+                  self.dropout_placeholder: dp}
+            #loss, pred, summary, _ = session.run(
+            #  [self.calculate_loss, self.pred, self.merged, train_op], feed_dict=feed)
+            pred  ,_ = session.run(
+              [self.pred , train_op], feed_dict=feed)
+
+            pred_list.append(pred.eval())
+
+            if train_writer is not None:
+                train_writer.add_summary(summary, num_epoch*total_steps + step)
+
+            #answers = a[step*config.batch_size:(step+1)*config.batch_size]
+            #accuracy += np.sum(pred == answers)/float(len(answers))
+
+
+            #total_loss.append(loss)
+            #if verbose and step % verbose == 0:
+            #    sys.stdout.write('\r{} / {} : loss = {}'.format(
+            #      step, total_steps, np.mean(total_loss)))
+             #   sys.stdout.flush()
+
+
+        #if verbose:
+        #    sys.stdout.write('\r')
+
+        #print
+        #print "********total_steps=",total_steps
+        #return np.mean(total_loss), accuracy/float(total_steps)
+        return pred_list
 
     def __init__(self, config):
 

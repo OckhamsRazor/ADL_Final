@@ -49,7 +49,9 @@ with tf.Session() as session:
     saver.restore(session, 'weights/task' + str(model.config.babi_id) + '.weights')
 
     print '==> running DMN'
-    test_loss, test_accuracy = model.run_epoch(session, model.test)
+    pred_list = model.run_test_epoch(session, model.test)
+    answer_file = open("answer.txt","w")
+    for pred in pred_list:
+        answer_file.write(pred)
+        answer_file.write("\n")
 
-    print ''
-    print 'Test accuracy:', test_accuracy
