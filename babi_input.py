@@ -48,11 +48,11 @@ def init_babi(fname):
                 task["Q"] = line["question"].encode('utf-8') + answer_list.encode('utf-8')
                 if "answer" in line: 
                     if count in line["answer"]:
-                        task["A"] = "yes"
+                        task["A"] = 1
                     else :
-                        task["A"] = "no"
+                        task["A"] = 0
                 else:
-                    task["A"] = "yes"
+                    task["A"] = 1
 
                 count += 1
                 task["S"] = "0"
@@ -202,12 +202,13 @@ def process_input(data_raw, floatX, word2vec, vocab, ivocab, embed_size, split_s
         else:
             inputs.append(np.vstack(inp_vector).astype(floatX))
         questions.append(np.vstack(q_vector).astype(floatX))
-        answers.append(process_word(word = x["A"], 
-                                        word2vec = word2vec, 
-                                        vocab = vocab, 
-                                        ivocab = ivocab, 
-                                        word_vector_size = embed_size, 
-                                        to_return = "index"))
+        #answers.append(process_word(word = x["A"], 
+        #                                word2vec = word2vec, 
+        #                                vocab = vocab, 
+        #                                ivocab = ivocab, 
+        #                                word_vector_size = embed_size, 
+        #                                to_return = "index"))
+        answers.append(x["A"])
         # NOTE: here we assume the answer is one word! 
 
         if not split_sentences:
@@ -219,7 +220,7 @@ def process_input(data_raw, floatX, word2vec, vocab, ivocab, embed_size, split_s
                 raise Exception("invalid input_mask_mode")
 
         relevant_labels.append(x["S"])
-    
+   
     return inputs, questions, answers, input_masks, relevant_labels 
 
 def get_lens(inputs, split_sentences=False):
@@ -327,7 +328,6 @@ def load_babi(config, split_sentences=False):
     questions = pad_inputs(questions, q_lens, max_q_len)
 
     answers = np.stack(answers)
-
     rel_labels = np.zeros((len(rel_labels), len(rel_labels[0])))
 
     for i, tt in enumerate(rel_labels):

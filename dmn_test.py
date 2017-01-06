@@ -52,6 +52,7 @@ with tf.Session() as session:
     pred_list = model.run_test_epoch(session, model.test)
     answer_file = open("answer.txt","w")
     for pred in pred_list:
-        answer_file.write(pred)
+        pred = np.reshape(pred, (-1,))
+        answer_file.write(str(np.argmax(pred)))
         answer_file.write("\n")
 

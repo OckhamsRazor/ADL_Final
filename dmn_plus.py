@@ -11,7 +11,7 @@ import babi_input
 class Config(object):
     """Holds model hyperparams and data information."""
 
-    batch_size = 100
+    batch_size = 4
     test_batch_size = 4
     #embed_size = 80
     #embed_size = 80
@@ -50,7 +50,7 @@ class Config(object):
 
     floatX = np.float32
 
-    babi_id = "1"
+    babi_id = "6"
     babi_test_id = ""
 
     train_mode = True
@@ -118,7 +118,7 @@ class DMN_PLUS(object):
         self.question_len_placeholder = tf.placeholder(tf.int32, shape=(self.config.batch_size,))
         self.input_len_placeholder = tf.placeholder(tf.int32, shape=(self.config.batch_size,))
 
-        self.answer_placeholder = tf.placeholder(tf.int64, shape=(self.config.batch_size,))
+        self.answer_placeholder = tf.placeholder(tf.float32, shape=(self.config.batch_size,))
 
         self.rel_label_placeholder = tf.placeholder(tf.int32, shape=(self.config.batch_size, self.num_supporting_facts))
 
@@ -153,9 +153,11 @@ class DMN_PLUS(object):
     def get_predictions(self, output):
         """Get answer predictions from output"""
         #preds = tf.nn.softmax(output)
-        preds = tf.nn.softmax(output,dim=0)
+        # preds = tf.nn.softmax(output,dim=0)
         #pred = tf.argmax(preds, 1)
-        pred = tf.argmax(preds, 0)
+        # pred = tf.argmax(preds, 0)
+        #pred = tf.greater(output, 0.5*tf.ones_like(output))
+        pred = output
         return pred
       
     def add_loss_op(self, output):
@@ -167,7 +169,12 @@ class DMN_PLUS(object):
                 labels = tf.gather(tf.transpose(self.rel_label_placeholder), 0)
                 gate_loss += tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(att, labels))
 
-        loss = self.config.beta*tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(output, self.answer_placeholder)) + gate_loss
+        #loss = self.config.beta*tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(output, self.answer_placeholder)) + gate_loss
+        target = self.answer_placeholder
+        loss = -self.config.beta*tf.reduce_sum(
+            tf.mul(target, tf.log(output)) + tf.mul(1-target, tf.log(1-output))
+        )
+        loss /= self.config.batch_size
 
         # add l2 regularization for all variables except biases
         for v in tf.trainable_variables():
@@ -300,12 +307,10 @@ class DMN_PLUS(object):
 
             rnn_output = tf.nn.dropout(rnn_output, self.dropout_placeholder)
 
-            U = tf.get_variable("U", (2*self.config.embed_size, self.vocab_size))
-            b_p = tf.get_variable("bias_p", (self.vocab_size,))
+            U = tf.get_variable("U", (2*self.config.embed_size, 1))
+            b_p = tf.get_variable("bias_p", (1,))
 
-            output = tf.matmul(tf.concat(1, [rnn_output, q_vec]), U) + b_p
-
-
+            output = tf.sigmoid(tf.matmul(tf.concat(1, [rnn_output, q_vec]), U) + b_p)
             return output
 
     def inference(self):
@@ -371,7 +376,7 @@ class DMN_PLUS(object):
         # shuffle data
         p = np.random.permutation(len(data[0]))
         qp, ip, ql, il, im, a, r = data
-        qp, ip, ql, il, im, a, r = qp[p], ip[p], ql[p], il[p], im[p], a[p], r[p] 
+        qp, ip, ql, il, im, a, r = qp[p], ip[p], ql[p], il[p], im[p], a[p], r[p]
 
         for step in range(total_steps):
             index = range(step*config.batch_size,(step+1)*config.batch_size)
@@ -388,9 +393,12 @@ class DMN_PLUS(object):
             if train_writer is not None:
                 train_writer.add_summary(summary, num_epoch*total_steps + step)
 
+            pred = np.reshape(pred, (-1,))
+            pred[pred < 0.5] = 0
+            pred[pred >= 0.5] = 1
+            pred = pred.astype(np.int64)
             answers = a[step*config.batch_size:(step+1)*config.batch_size]
             accuracy += np.sum(pred == answers)/float(len(answers))
-
 
             total_loss.append(loss)
             if verbose and step % verbose == 0:
@@ -437,7 +445,7 @@ class DMN_PLUS(object):
             pred  ,_ = session.run(
               [self.pred , train_op], feed_dict=feed)
 
-            pred_list.append(pred.eval())
+            pred_list.append(pred)
 
             if train_writer is not None:
                 train_writer.add_summary(summary, num_epoch*total_steps + step)
