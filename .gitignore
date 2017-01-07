@@ -1,2 +1,5 @@
 data/
+summaries/
+weights/
+answer.txt
 *.pyc
