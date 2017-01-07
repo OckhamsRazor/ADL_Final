@@ -38,6 +38,8 @@ def init_babi(fname):
     #        for num in tmp[2].split():
     #            task["S"].append(id_map[int(num.strip())])
     #        tasks.append(task.copy())
+    pos_count = 0
+    neg_count = 0
     with open(fname, 'r') as f:
         data = json.load(f)
         for line in data:
@@ -46,7 +48,10 @@ def init_babi(fname):
                 task = {"C": "", "Q": "", "A": "", "S": ""}
                 task["C"] = line["context"].encode('utf-8')
                 task["Q"] = line["question"].encode('utf-8') + answer_list.encode('utf-8')
-                if "answer" in line: 
+                if "answer" in line:
+                    if type(line["answer"]) != "list":
+                        line["answer"] = [line["answer"]]
+
                     if count in line["answer"]:
                         task["A"] = 1
                     else :
@@ -56,7 +61,16 @@ def init_babi(fname):
 
                 count += 1
                 task["S"] = "0"
-                tasks.append(task.copy())
+                if task["A"] == 1:
+                    tasks.append(task.copy())
+                    pos_count += 1
+                else: # task["A"] == 0
+                    if neg_count - pos_count < 10:
+                        tasks.append(task.copy())
+                        neg_count += 1
+
+    #print pos_count
+    #exit(1)
     return tasks
 
 
