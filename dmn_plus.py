@@ -45,7 +45,7 @@ class Config(object):
     num_hops = 3
     num_attention_features = 4
 
-    max_allowed_inputs = 130
+    max_allowed_inputs = 100
     num_train = 1500
 
     floatX = np.float32
