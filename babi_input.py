@@ -1,5 +1,4 @@
 import sys
-
 import os as os
 import numpy as np
 import json
@@ -168,7 +167,8 @@ def process_input(data_raw, floatX, word2vec, vocab, ivocab, embed_size, split_s
     relevant_labels = []
     for x in data_raw:
         if split_sentences:
-            inp = x["C"].lower().split(' . ') 
+            #inp = x["C"].lower().split(' . ') 
+            inp = x["C"].lower().split('. ') 
             inp = [w for w in inp if len(w) > 0]
             inp = [i.split() for i in inp]
         else:
