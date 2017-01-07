@@ -21,8 +21,8 @@ class Config(object):
     max_epochs = 256
     early_stopping = 20
 
-    dropout = 0.7
-    lr = 0.001
+    dropout = 0.9
+    lr = 0.01
     l2 = 0.001
 
     cap_grads = False
@@ -410,8 +410,6 @@ class DMN_PLUS(object):
         if verbose:
             sys.stdout.write('\r')
 
-        #print
-        #print "********total_steps=",total_steps
         return np.mean(total_loss), accuracy/float(total_steps)
 
     def run_test_epoch(self, session, data, num_epoch=0, train_writer=None, train_op=None, verbose=2, train=False):
