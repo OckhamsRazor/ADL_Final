@@ -1,5 +1,4 @@
 import sys
-
 import os as os
 import numpy as np
 import json
@@ -44,6 +43,7 @@ def init_babi(fname):
         data = json.load(f)
         for line in data:
             count = 0
+            b=0
             for answer_list in line["answer_list"]:
                 task = {"C": "", "Q": "", "A": "", "S": ""}
                 task["C"] = line["context"].encode('utf-8')
@@ -179,7 +179,8 @@ def process_input(data_raw, floatX, word2vec, vocab, ivocab, embed_size, split_s
     relevant_labels = []
     for x in data_raw:
         if split_sentences:
-            inp = x["C"].lower().split(' . ') 
+            #inp = x["C"].lower().split(' . ') 
+            inp = x["C"].lower().split('. ') 
             inp = [w for w in inp if len(w) > 0]
             inp = [i.split() for i in inp]
         else:
@@ -350,7 +351,10 @@ def load_babi(config, split_sentences=False):
     if config.train_mode:
         train = questions[:config.num_train], inputs[:config.num_train], q_lens[:config.num_train], input_lens[:config.num_train], input_masks[:config.num_train], answers[:config.num_train], rel_labels[:config.num_train] 
 
-        valid = questions[config.num_train:], inputs[config.num_train:], q_lens[config.num_train:], input_lens[config.num_train:], input_masks[config.num_train:], answers[config.num_train:], rel_labels[config.num_train:] 
+        valid = questions[config.num_train:], inputs[config.num_train:], q_lens[config.num_train:], input_lens[config.num_train:], input_masks[config.num_train:], answers[config.num_train:], rel_labels[config.num_train:]
+
+        print "len=",len(questions[:config.num_train]), len(questions[config.num_train:])
+ 
         return train, valid, word_embedding, max_q_len, max_input_len, max_mask_len, rel_labels.shape[1], len(vocab)
 
     else:
