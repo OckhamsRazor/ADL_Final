@@ -42,6 +42,7 @@ def init_babi(fname):
         data = json.load(f)
         for line in data:
             count = 0
+            b=0
             for answer_list in line["answer_list"]:
                 task = {"C": "", "Q": "", "A": "", "S": ""}
                 task["C"] = line["context"].encode('utf-8')
@@ -49,6 +50,7 @@ def init_babi(fname):
                 if "answer" in line: 
                     if count in line["answer"]:
                         task["A"] = 1
+                        b =1
                     else :
                         task["A"] = 0
                 else:
@@ -57,6 +59,7 @@ def init_babi(fname):
                 count += 1
                 task["S"] = "0"
                 tasks.append(task.copy())
+                if b==1: break
     return tasks
 
 
@@ -336,7 +339,10 @@ def load_babi(config, split_sentences=False):
     if config.train_mode:
         train = questions[:config.num_train], inputs[:config.num_train], q_lens[:config.num_train], input_lens[:config.num_train], input_masks[:config.num_train], answers[:config.num_train], rel_labels[:config.num_train] 
 
-        valid = questions[config.num_train:], inputs[config.num_train:], q_lens[config.num_train:], input_lens[config.num_train:], input_masks[config.num_train:], answers[config.num_train:], rel_labels[config.num_train:] 
+        valid = questions[config.num_train:], inputs[config.num_train:], q_lens[config.num_train:], input_lens[config.num_train:], input_masks[config.num_train:], answers[config.num_train:], rel_labels[config.num_train:]
+
+        print "len=",len(questions[:config.num_train]), len(questions[config.num_train:])
+ 
         return train, valid, word_embedding, max_q_len, max_input_len, max_mask_len, rel_labels.shape[1], len(vocab)
 
     else:
