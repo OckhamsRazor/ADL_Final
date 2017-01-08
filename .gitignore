@@ -3,3 +3,4 @@ summaries/
 weights/
 answer.txt
 *.pyc
+log.*

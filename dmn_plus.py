@@ -21,7 +21,7 @@ class Config(object):
     max_epochs = 256
     early_stopping = 20
 
-    dropout = 0.9
+    dropout = 0.95
     lr = 0.01
     l2 = 0.001
 
@@ -42,7 +42,7 @@ class Config(object):
     anneal_threshold = 1000
     anneal_by = 1.5
 
-    num_hops = 3
+    num_hops = 2
     num_attention_features = 4
 
     max_allowed_inputs = 100

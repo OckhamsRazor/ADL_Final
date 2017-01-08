@@ -49,9 +49,9 @@ def init_babi(fname):
                 task["C"] = line["context"].encode('utf-8')
                 task["Q"] = line["question"].encode('utf-8') + answer_list.encode('utf-8')
                 if "answer" in line:
-                    if type(line["answer"]) != "list":
+                    if not isinstance(line["answer"], list):
                         line["answer"] = [line["answer"]]
-
+                    
                     if count in line["answer"]:
                         task["A"] = 1
                     else :
