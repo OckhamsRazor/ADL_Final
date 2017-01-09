@@ -74,7 +74,7 @@ def init_babi(fname):
     return tasks
 
 
-def get_babi_raw(id, test_id):
+def get_babi_raw(test_file):
     #babi_map = {
     #    "1": "qa1_single-supporting-fact",
     #    "2": "qa2_two-supporting-facts",
@@ -128,7 +128,7 @@ def get_babi_raw(id, test_id):
     #_babi_raw = init_babi("../TOEFL_QA/train.json")
     #babi_train_raw = _babi_raw[:len(babi_train_raw)*0.9]
     babi_train_raw = init_babi("data/train.json")
-    babi_test_raw = init_babi("data/test.json")
+    babi_test_raw = init_babi(test_file)
     #babi_test_raw = _babi_raw[len(babi_train_raw)*0.9:]
     #babi_test_raw = init_babi(os.path.join(os.path.dirname(os.path.realpath(__file__)), 'data/en-10k/%s_test.txt' % babi_test_name))
     return babi_train_raw, babi_test_raw
@@ -290,7 +290,7 @@ def load_babi(config, split_sentences=False):
     vocab = {}
     ivocab = {}
 
-    babi_train_raw, babi_test_raw = get_babi_raw(config.babi_id, config.babi_test_id)
+    babi_train_raw, babi_test_raw = get_babi_raw(config.test_file)
 
     if config.word2vec_init:
         assert config.embed_size == 100

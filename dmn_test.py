@@ -7,6 +7,7 @@ import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument("-b", "--babi_task_id", help="specify babi task 1-20 (default=1)")
 parser.add_argument("-t", "--dmn_type", help="specify type of dmn (default=original)")
+parser.add_argument("-i", "--input_data", help="specify the input data (default=data/test.json)")
 args = parser.parse_args()
 
 dmn_type = args.dmn_type if args.dmn_type is not None else "plus"
@@ -22,6 +23,9 @@ else:
 
 if args.babi_task_id is not None:
     config.babi_id = args.babi_task_id
+
+if args.input_data is not None:
+    config.test_file = args.input_data
 
 config.strong_supervision = False
 

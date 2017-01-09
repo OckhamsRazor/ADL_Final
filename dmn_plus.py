@@ -53,6 +53,8 @@ class Config(object):
     babi_id = "6"
     babi_test_id = ""
 
+    test_file = "data/test.json"
+
     train_mode = True
 
 def _add_gradient_noise(t, stddev=1e-3, name=None):
