@@ -22,15 +22,15 @@ class Config(object):
     early_stopping = 20
 
     dropout = 0.95
-    lr = 0.01
+    lr = 0.005
     l2 = 0.001
 
     cap_grads = False
     max_grad_val = 10
     noisy_grads = False
 
-    #word2vec_init = False
-    word2vec_init = True
+    word2vec_init = False
+    #word2vec_init = True
     embedding_init = 1.7320508 # root 3
 
     # set to zero with strong supervision to only train gates
@@ -47,6 +47,7 @@ class Config(object):
 
     max_allowed_inputs = 100
     num_train = 1500
+    #num_train = 28000
 
     floatX = np.float32
 
@@ -107,9 +108,11 @@ class DMN_PLUS(object):
     def load_data(self, debug=False):
         """Loads train/valid/test data and sentence encoding"""
         if self.config.train_mode:
-            self.train, self.valid, self.word_embedding, self.max_q_len, self.max_input_len, self.max_sen_len, self.num_supporting_facts, self.vocab_size = babi_input.load_babi(self.config, split_sentences=True)
+            #self.train, self.valid, self.word_embedding, self.max_q_len, self.max_input_len, self.max_sen_len, self.num_supporting_facts, self.vocab_size = babi_input.load_babi(self.config, split_sentences=True)
+            self.train, self.valid, self.word_embedding, self.max_q_len, self.max_input_len, self.max_sen_len, self.num_supporting_facts, self.vocab_size, self.max_z_len = babi_input.load_babi(self.config, split_sentences=True)
         else:
-            self.test, self.word_embedding, self.max_q_len, self.max_input_len, self.max_sen_len, self.num_supporting_facts, self.vocab_size = babi_input.load_babi(self.config, split_sentences=True)
+            #self.test, self.word_embedding, self.max_q_len, self.max_input_len, self.max_sen_len, self.num_supporting_facts, self.vocab_size = babi_input.load_babi(self.config, split_sentences=True)
+            self.test, self.word_embedding, self.max_q_len, self.max_input_len, self.max_sen_len, self.num_supporting_facts, self.vocab_size,self.max_z_len = babi_input.load_babi(self.config, split_sentences=True)
         self.encoding = _position_encoding(self.max_sen_len, self.config.embed_size)
 
     def add_placeholders(self):
@@ -125,6 +128,11 @@ class DMN_PLUS(object):
         self.rel_label_placeholder = tf.placeholder(tf.int32, shape=(self.config.batch_size, self.num_supporting_facts))
 
         self.dropout_placeholder = tf.placeholder(tf.float32)
+
+        ##
+        self.choice_placeholder = tf.placeholder(tf.int32, shape=(4,self.config.batch_size, self.max_z_len))
+        self.choice_len_placeholder = tf.placeholder(tf.int32, shape=(4,self.config.batch_size,))
+        ##
 
     def add_reused_variables(self):
         """Adds trainable variables which are later reused""" 
@@ -212,6 +220,19 @@ class DMN_PLUS(object):
         _, q_vec = tf.nn.rnn(self.gru_cell, questions, dtype=np.float32, sequence_length=self.question_len_placeholder)
         
         return q_vec
+
+    def get_choice_representation(self, embeddings):
+        """Get choice vectors via embedding and GRU"""
+        z_vec = [[],[],[],[]]
+        for i in range(4):
+            choices = tf.nn.embedding_lookup(embeddings, self.choice_placeholder[i,:,:])
+            choices = tf.split(1, self.max_z_len, choices)
+            choices = [tf.squeeze(z, squeeze_dims=[1]) for z in choices]
+            _, _vec = tf.nn.rnn(self.gru_cell, choices, dtype=np.float32, sequence_length=self.choice_len_placeholder[i,:,:])
+            z_vec[i] = _vec
+
+        return z_vec
+
 
     def get_input_representation(self, embeddings):
         """Get fact (sentence) vectors via embedding, positional encoding and bi-directional GRU"""
@@ -325,7 +346,12 @@ class DMN_PLUS(object):
         with tf.variable_scope("question", initializer=_xavier_weight_init()):
             print '==> get question representation'
             q_vec = self.get_question_representation(embeddings)
-         
+
+        ## 
+        with tf.variable_scope("choice", initializer=_xavier_weight_init()):
+            print '==> get choice representation'
+            z_vec = self.get_choice_representation(embeddings)
+        ##
 
         with tf.variable_scope("input", initializer=_xavier_weight_init()):
             print '==> get input representation'
@@ -371,14 +397,13 @@ class DMN_PLUS(object):
         total_loss = []
         accuracy = 0
 
-        #print "*data[0]=",(data[0])
-        #print "*len(data[0])=",len(data[0])
-        #print "****total_steps=",total_steps
- 
         # shuffle data
         p = np.random.permutation(len(data[0]))
-        qp, ip, ql, il, im, a, r = data
-        qp, ip, ql, il, im, a, r = qp[p], ip[p], ql[p], il[p], im[p], a[p], r[p]
+        #qp, ip, ql, il, im, a, r = data
+        #qp, ip, ql, il, im, a, r = qp[p], ip[p], ql[p], il[p], im[p], a[p], r[p]
+
+        qp, ip, ql, il, im, a, r, zp, zl = data
+        qp, ip, ql, il, im, a, r, zp, zl = qp[p], ip[p], ql[p], il[p], im[p], a[p], r[p], [zp[0][p], zp[1][p], zp[2][p], zp[3][p]], [zl[0][p], zl[1][p], zl[2][p], zl[3][p]]
 
         for step in range(total_steps):
             index = range(step*config.batch_size,(step+1)*config.batch_size)
@@ -388,7 +413,11 @@ class DMN_PLUS(object):
                   self.input_len_placeholder: il[index],
                   self.answer_placeholder: a[index],
                   self.rel_label_placeholder: r[index],
-                  self.dropout_placeholder: dp}
+                  self.dropout_placeholder: dp,
+                  ##
+                  self.choice_placeholder: zp[index],
+                  self.choice_len_placeholder: zl[index]}
+                  ##
             loss, pred, summary, _ = session.run(
               [self.calculate_loss, self.pred, self.merged, train_op], feed_dict=feed)
 
