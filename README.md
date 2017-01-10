@@ -15,7 +15,5 @@ Codalab: r04942056
 
 ## Reference
 1. [Dynamic Memory Networks in TensorFlow] (https://github.com/barronalex/Dynamic-Memory-Networks-in-TensorFlow)
-2. Dynamic Memory Networks for Visual and Textual Question Answering
-3. Hierarchical Attention Model for Improved Machine Comprehension of Spoken Content
-
-
+2. Caiming Xiong, Stephen Merity, Richard Socher. Dynamic Memory Networks for Visual and Textual Question Answering. arXiv preprint arXiv:1603.01417
+3. Wei Fang, Jui-Yang Hsu, Hung-yi Lee, Lin-Shan Lee. Hierarchical Attention Model for Improved Machine Comprehension of Spoken Content. arXiv preprint arXiv:1608.07775
