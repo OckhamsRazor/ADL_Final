@@ -12,45 +12,87 @@ def init_babi(fname):
     print "==> Loading test from %s" % fname
     tasks = []
     task = None
-    pos_count = 0
-    neg_count = 0
     with open(fname, 'r') as f:
         data = json.load(f)
         for line in data:
-            count = 0
-            for answer_list in line["answer_list"]:
-                task = {"C": "", "Q": "", "A": "", "S": ""}
-                task["C"] = line["context"].encode('utf-8')
-                task["Q"] = line["question"].encode('utf-8') + answer_list.encode('utf-8')
-                if "answer" in line:
-                    if not isinstance(line["answer"], list):
-                        line["answer"] = [line["answer"]]
-                    
-                    if count in line["answer"]:
-                        task["A"] = 1
-                    else :
-                        task["A"] = 0
+            task = {"C": "", "Q": "", "A": "", "S": "", "Z":[]}
+            task["C"] = line["context"].encode('utf-8')
+            task["Q"] = line["question"].encode('utf-8')
+
+            if "answer" in line:
+                if not isinstance(line["answer"], list):
+                    task["A"] = line["answer"]
                 else:
-                    task["A"] = 1
+                    task["A"] = line["answer"][0]
+            else:
+                task["A"] = "0"
 
-                count += 1
-                task["S"] = "0"
-                if task["A"] == 1:
-                    tasks.append(task.copy())
-                    pos_count += 1
-                else: # task["A"] == 0
-                    if neg_count - pos_count < 10:
-                        tasks.append(task.copy())
-                        neg_count += 1
+            for choice in line["answer_list"]:
+                task["Z"].append(choice)
 
-    #print pos_count
-    #exit(1)
+            task["S"] = "0"
+            tasks.append(task.copy())
+
     return tasks
 
 
 def get_babi_raw(test_file):
+    #babi_map = {
+    #    "1": "qa1_single-supporting-fact",
+    #    "2": "qa2_two-supporting-facts",
+    #    "3": "qa3_three-supporting-facts",
+    #    "4": "qa4_two-arg-relations",
+    #    "5": "qa5_three-arg-relations",
+    #    "6": "qa6_yes-no-questions",
+    #    "7": "qa7_counting",
+    #    "8": "qa8_lists-sets",
+    #    "9": "qa9_simple-negation",
+    #    "10": "qa10_indefinite-knowledge",
+    #    "11": "qa11_basic-coreference",
+    #    "12": "qa12_conjunction",
+    #    "13": "qa13_compound-coreference",
+    #    "14": "qa14_time-reasoning",
+    #    "15": "qa15_basic-deduction",
+    #    "16": "qa16_basic-induction",
+    #    "17": "qa17_positional-reasoning",
+    #    "18": "qa18_size-reasoning",
+    #    "19": "qa19_path-finding",
+    #    "20": "qa20_agents-motivations",
+    #    "MCTest": "MCTest",
+    #    "19changed": "19changed",
+    #    "joint": "all_shuffled", 
+    #    "sh1": "../shuffled/qa1_single-supporting-fact",
+    #    "sh2": "../shuffled/qa2_two-supporting-facts",
+    #    "sh3": "../shuffled/qa3_three-supporting-facts",
+    #    "sh4": "../shuffled/qa4_two-arg-relations",
+    #    "sh5": "../shuffled/qa5_three-arg-relations",
+    #    "sh6": "../shuffled/qa6_yes-no-questions",
+    #    "sh7": "../shuffled/qa7_counting",
+    #    "sh8": "../shuffled/qa8_lists-sets",
+    #    "sh9": "../shuffled/qa9_simple-negation",
+    #    "sh10": "../shuffled/qa10_indefinite-knowledge",
+    #    "sh11": "../shuffled/qa11_basic-coreference",
+    #    "sh12": "../shuffled/qa12_conjunction",
+    #    "sh13": "../shuffled/qa13_compound-coreference",
+    #    "sh14": "../shuffled/qa14_time-reasoning",
+    #    "sh15": "../shuffled/qa15_basic-deduction",
+    #    "sh16": "../shuffled/qa16_basic-induction",
+    #    "sh17": "../shuffled/qa17_positional-reasoning",
+    #    "sh18": "../shuffled/qa18_size-reasoning",
+    #    "sh19": "../shuffled/qa19_path-finding",
+    #    "sh20": "../shuffled/qa20_agents-motivations",
+    # }
+    #if (test_id == ""):
+    #    test_id = id 
+    #babi_name = babi_map[id]
+    #babi_test_name = babi_map[test_id]
+    #babi_train_raw = init_babi(os.path.join(os.path.dirname(os.path.realpath(__file__)), 'data/en-10k/%s_train.txt' % babi_name))
+    #_babi_raw = init_babi("../TOEFL_QA/train.json")
+    #babi_train_raw = _babi_raw[:len(babi_train_raw)*0.9]
     babi_train_raw = init_babi("data/t_train.json")
     babi_test_raw = init_babi(test_file)
+    #babi_test_raw = _babi_raw[len(babi_train_raw)*0.9:]
+    #babi_test_raw = init_babi(os.path.join(os.path.dirname(os.path.realpath(__file__)), 'data/en-10k/%s_test.txt' % babi_test_name))
     return babi_train_raw, babi_test_raw
 
             
@@ -97,6 +139,7 @@ def process_input(data_raw, floatX, word2vec, vocab, ivocab, embed_size, split_s
     answers = []
     input_masks = []
     relevant_labels = []
+    choices = [[],[],[],[]]
     for x in data_raw:
         if split_sentences:
             #inp = x["C"].lower().split(' . ') 
@@ -131,12 +174,13 @@ def process_input(data_raw, floatX, word2vec, vocab, ivocab, embed_size, split_s
                                     ivocab = ivocab, 
                                     word_vector_size = embed_size, 
                                     to_return = "index") for w in q]
-        
+
         if split_sentences:
             inputs.append(inp_vector)
         else:
             inputs.append(np.vstack(inp_vector).astype(floatX))
         questions.append(np.vstack(q_vector).astype(floatX))
+
         #answers.append(process_word(word = x["A"], 
         #                                word2vec = word2vec, 
         #                                vocab = vocab, 
@@ -155,8 +199,20 @@ def process_input(data_raw, floatX, word2vec, vocab, ivocab, embed_size, split_s
                 raise Exception("invalid input_mask_mode")
 
         relevant_labels.append(x["S"])
+        for i, _z in enumerate(x["Z"]):
+            _z = [w for w in _z if len(w) > 0]
+
+            _z_vector = [process_word(word = w, 
+                                    word2vec = word2vec, 
+                                    vocab = vocab, 
+                                    ivocab = ivocab, 
+                                    word_vector_size = embed_size, 
+                                    to_return = "index") for w in _z]
+        
+            choices[i].append(np.vstack(_z_vector).astype(floatX))
+
    
-    return inputs, questions, answers, input_masks, relevant_labels 
+    return inputs, questions, answers, input_masks, relevant_labels, choices 
 
 def get_lens(inputs, split_sentences=False):
     lens = np.zeros((len(inputs)), dtype=int)
@@ -237,7 +293,7 @@ def load_babi(config, split_sentences=False):
     else:
         word_embedding = np.random.uniform(-config.embedding_init, config.embedding_init, (len(ivocab), config.embed_size))
 
-    inputs, questions, answers, input_masks, rel_labels = train_data if config.train_mode else test_data
+    inputs, questions, answers, input_masks, rel_labels, choices = train_data if config.train_mode else test_data
 
     if split_sentences:
         input_lens, sen_lens, max_sen_len = get_sentence_lens(inputs)
@@ -249,8 +305,17 @@ def load_babi(config, split_sentences=False):
 
     q_lens = get_lens(questions)
 
+    z_lens_list = []
+    for i, choice in enumerate(choices):
+        z_lens = get_lens(choices[i])
+        z_lens_list.append( z_lens )
+    z_lenss = [ np.max(z_lens) for z_lens in z_lens_list ] 
+    max_z_len = max(z_lenss)
+
     max_q_len = np.max(q_lens)
     max_input_len = min(np.max(input_lens), config.max_allowed_inputs)
+    #for i in range(len(max_z_len)):
+    #    len_list.append( np.max( z_lens[i] ) )
 
     #pad out arrays to max
     if split_sentences:
@@ -262,6 +327,9 @@ def load_babi(config, split_sentences=False):
 
     questions = pad_inputs(questions, q_lens, max_q_len)
 
+    for i, choice in enumerate(choices):
+        choices[i] = pad_inputs(choice, z_lens_list[i], max_z_len)
+
     answers = np.stack(answers)
     rel_labels = np.zeros((len(rel_labels), len(rel_labels[0])))
 
@@ -269,17 +337,21 @@ def load_babi(config, split_sentences=False):
         rel_labels[i] = np.array(tt, dtype=int)
 
     if config.train_mode:
-        train = questions[:config.num_train], inputs[:config.num_train], q_lens[:config.num_train], input_lens[:config.num_train], input_masks[:config.num_train], answers[:config.num_train], rel_labels[:config.num_train] 
+        #train = questions[:config.num_train], inputs[:config.num_train], q_lens[:config.num_train], input_lens[:config.num_train], input_masks[:config.num_train], answers[:config.num_train], rel_labels[:config.num_train] 
+        train = questions[:config.num_train], inputs[:config.num_train], q_lens[:config.num_train], input_lens[:config.num_train], input_masks[:config.num_train], answers[:config.num_train], rel_labels[:config.num_train], [choices[0][:config.num_train],choices[1][:config.num_train],choices[2][:config.num_train],choices[3][:config.num_train]], [z_lens_list[0][:config.num_train],z_lens_list[1][:config.num_train],z_lens_list[2][:config.num_train],z_lens_list[3][:config.num_train]]
 
-        valid = questions[config.num_train:], inputs[config.num_train:], q_lens[config.num_train:], input_lens[config.num_train:], input_masks[config.num_train:], answers[config.num_train:], rel_labels[config.num_train:]
+        #valid = questions[config.num_train:], inputs[config.num_train:], q_lens[config.num_train:], input_lens[config.num_train:], input_masks[config.num_train:], answers[config.num_train:], rel_labels[config.num_train:]
+        valid = questions[config.num_train:], inputs[config.num_train:], q_lens[config.num_train:], input_lens[config.num_train:], input_masks[config.num_train:], answers[config.num_train:], rel_labels[config.num_train:], [choices[0][config.num_train:],choices[1][config.num_train:],choices[2][config.num_train:],choices[3][config.num_train:]], [z_lens_list[0][config.num_train:], z_lens_list[1][config.num_train:], z_lens_list[2][config.num_train:], z_lens_list[3][config.num_train:]]
 
         print "len=",len(questions[:config.num_train]), len(questions[config.num_train:])
  
-        return train, valid, word_embedding, max_q_len, max_input_len, max_mask_len, rel_labels.shape[1], len(vocab)
+        #return train, valid, word_embedding, max_q_len, max_input_len, max_mask_len, rel_labels.shape[1], len(vocab)
+        return train, valid, word_embedding, max_q_len, max_input_len, max_mask_len, rel_labels.shape[1], len(vocab), max_z_len
 
     else:
-        test = questions, inputs, q_lens, input_lens, input_masks, answers, rel_labels
-        return test, word_embedding, max_q_len, max_input_len, max_mask_len, rel_labels.shape[1], len(vocab)
+        test = questions, inputs, q_lens, input_lens, input_masks, answers, rel_labels, choices[:config.num_train], z_lens[:config.num_train]
+        #return test, word_embedding, max_q_len, max_input_len, max_mask_len, rel_labels.shape[1], len(vocab)
+        return test, word_embedding, max_q_len, max_input_len, max_mask_len, rel_labels.shape[1], len(vocab), max_z_len
 
 
     
