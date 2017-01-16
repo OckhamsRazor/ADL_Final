@@ -11,15 +11,18 @@ import toefl_input
 class Config(object):
     """Holds model hyperparams and data information."""
 
-    batch_size = 4
-    test_batch_size = 4
+    batch_size = 32
+    test_batch_size = 32
+    #embed_size = 80
+    #embed_size = 80
     embed_size = 100
     hidden_size = 100
+    choice_num = 4
 
     max_epochs = 256
     early_stopping = 20
 
-    dropout = 0.95
+    dropout = 0.55
     lr = 0.01
     l2 = 0.001
 
@@ -44,7 +47,8 @@ class Config(object):
     num_attention_features = 4
 
     max_allowed_inputs = 100
-    num_train = 1500
+    num_train = 650
+    #num_train = 28000
 
     floatX = np.float32
 
@@ -105,9 +109,11 @@ class DMN_PLUS(object):
     def load_data(self, debug=False):
         """Loads train/valid/test data and sentence encoding"""
         if self.config.train_mode:
-            self.train, self.valid, self.word_embedding, self.max_q_len, self.max_input_len, self.max_sen_len, self.num_supporting_facts, self.vocab_size = toefl_input.load_babi(self.config, split_sentences=True)
+            #self.train, self.valid, self.word_embedding, self.max_q_len, self.max_input_len, self.max_sen_len, self.num_supporting_facts, self.vocab_size = babi_input.load_babi(self.config, split_sentences=True)
+            self.train, self.valid, self.word_embedding, self.max_q_len, self.max_input_len, self.max_sen_len, self.num_supporting_facts, self.vocab_size, self.max_z_len = toefl_input.load_babi(self.config, split_sentences=True)
         else:
-            self.test, self.word_embedding, self.max_q_len, self.max_input_len, self.max_sen_len, self.num_supporting_facts, self.vocab_size = toefl_input.load_babi(self.config, split_sentences=True)
+            #self.test, self.word_embedding, self.max_q_len, self.max_input_len, self.max_sen_len, self.num_supporting_facts, self.vocab_size = babi_input.load_babi(self.config, split_sentences=True)
+            self.test, self.word_embedding, self.max_q_len, self.max_input_len, self.max_sen_len, self.num_supporting_facts, self.vocab_size,self.max_z_len = toefl_input.load_babi(self.config, split_sentences=True)
         self.encoding = _position_encoding(self.max_sen_len, self.config.embed_size)
 
     def add_placeholders(self):
@@ -118,11 +124,17 @@ class DMN_PLUS(object):
         self.question_len_placeholder = tf.placeholder(tf.int32, shape=(self.config.batch_size,))
         self.input_len_placeholder = tf.placeholder(tf.int32, shape=(self.config.batch_size,))
 
-        self.answer_placeholder = tf.placeholder(tf.float32, shape=(self.config.batch_size,))
+        #self.answer_placeholder = tf.placeholder(tf.float32, shape=(self.config.batch_size,))
+        self.answer_placeholder = tf.placeholder(tf.int32, shape=(self.config.batch_size,))
 
         self.rel_label_placeholder = tf.placeholder(tf.int32, shape=(self.config.batch_size, self.num_supporting_facts))
 
         self.dropout_placeholder = tf.placeholder(tf.float32)
+
+        ##
+        self.choice_placeholder = tf.placeholder(tf.int32, shape=(4,self.config.batch_size, self.max_z_len))
+        self.choice_len_placeholder = tf.placeholder(tf.int32, shape=(4,self.config.batch_size,))
+        ##
 
     def add_reused_variables(self):
         """Adds trainable variables which are later reused""" 
@@ -152,15 +164,12 @@ class DMN_PLUS(object):
 
     def get_predictions(self, output):
         """Get answer predictions from output"""
-        #preds = tf.nn.softmax(output)
-        # preds = tf.nn.softmax(output,dim=0)
-        #pred = tf.argmax(preds, 1)
-        # pred = tf.argmax(preds, 0)
-        #pred = tf.greater(output, 0.5*tf.ones_like(output))
-        pred = output
+        preds = tf.nn.softmax(output)
+        pred = tf.argmax(preds, 1)
         return pred
       
     def add_loss_op(self, output):
+        """Calculate loss"""
         """Calculate loss"""
         # optional strong supervision of attention with supporting facts
         gate_loss = 0
@@ -168,19 +177,11 @@ class DMN_PLUS(object):
             for i, att in enumerate(self.attentions):
                 labels = tf.gather(tf.transpose(self.rel_label_placeholder), 0)
                 gate_loss += tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(att, labels))
-
-        #loss = self.config.beta*tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(output, self.answer_placeholder)) + gate_loss
-        target = self.answer_placeholder
-        loss = -self.config.beta*tf.reduce_sum(
-            tf.mul(target, tf.log(output)) + tf.mul(1-target, tf.log(1-output))
-        )
-        loss /= self.config.batch_size
-
+        loss = self.config.beta*tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(output, self.answer_placeholder)) + gate_loss
         # add l2 regularization for all variables except biases
         for v in tf.trainable_variables():
             if not 'bias' in v.name.lower():
                 loss += self.config.l2*tf.nn.l2_loss(v)
-
         tf.scalar_summary('loss', loss)
 
         return loss
@@ -210,6 +211,35 @@ class DMN_PLUS(object):
         _, q_vec = tf.nn.rnn(self.gru_cell, questions, dtype=np.float32, sequence_length=self.question_len_placeholder)
         
         return q_vec
+
+    def get_choice_representation(self, embeddings, choices, choice_length):
+        #self.question_placeholder = tf.placeholder(tf.int32, shape=(self.config.batch_size, self.max_q_len))
+        #self.question_len_placeholder = tf.placeholder(tf.int32, shape=(self.config.batch_size,))
+
+        #self.choice_placeholder = tf.placeholder(tf.int32, shape=(4,self.config.batch_size, self.max_z_len))
+        #self.choice_len_placeholder = tf.placeholder(tf.int32, shape=(4,self.config.batch_size,))
+        """Get choice vectors via embedding and GRU"""
+        #z_vec = [[],[],[],[]]
+        #for i in range(4):
+        #    choices = tf.slice( self.choice_placeholder, [i,0,0], [1, self.config.batch_size, self.max_z_len] )
+        #    choices = tf.reshape( choices, [self.config.batch_size, self.max_z_len] )
+        #    choices = tf.nn.embedding_lookup(embeddings, choices )
+        #    choices = tf.split(1, self.max_z_len, choices)
+        #    choices = [tf.squeeze(z, squeeze_dims=[1]) for z in choices]
+            #choice_length = tf.slice ( self.choice_len_placeholder, [i,0,0], [1, self.config.batch_size, :] )
+        #    choice_length = tf.gather ( self.choice_len_placeholder, i )
+        #    _, _vec = tf.nn.rnn( self.gru_cell, choices, dtype=np.float32, sequence_length=choice_length )
+            #tf.get_variable_scope().reuse_variables()
+        #    z_vec[i] = _vec
+
+        choices = tf.nn.embedding_lookup(embeddings, choices)
+        choices = tf.split(1, self.max_z_len, choices)
+        choices = [tf.squeeze(z, squeeze_dims=[1]) for z in choices]
+        _, z_vec = tf.nn.rnn( self.gru_cell, choices, dtype=np.float32, sequence_length=choice_length )
+        #tf.get_variable_scope().reuse_variables()
+
+        return z_vec
+
 
     def get_input_representation(self, embeddings):
         """Get fact (sentence) vectors via embedding, positional encoding and bi-directional GRU"""
@@ -301,17 +331,54 @@ class DMN_PLUS(object):
 
         return episode
 
-    def add_answer_module(self, rnn_output, q_vec):
-        """Linear softmax answer module"""
-        with tf.variable_scope("answer"):
-
+    def add_answer_module(self, rnn_output, q_vec, z_vec):
+        #z_vec = tf.stack( z_vec)
+        z_vec = tf.pack( z_vec)
+        z_vec = tf.transpose( z_vec, [1,0, 2])
+	with tf.variable_scope("answer"):
             rnn_output = tf.nn.dropout(rnn_output, self.dropout_placeholder)
+            #U = tf.get_variable("U", (2*self.config.embed_size, self.vocab_size))
+            U = tf.get_variable("U", (2*self.config.embed_size, self.config.embed_size))
+            #b_p = tf.get_variable("bias_p", (self.vocab_size,))
+            b_p = tf.get_variable("bias_p", (self.config.embed_size,))
 
-            U = tf.get_variable("U", (2*self.config.embed_size, 1))
-            b_p = tf.get_variable("bias_p", (1,))
+            final_story_encoding = tf.matmul(tf.concat(1, [rnn_output, q_vec]), U) + b_p # [batch_size, embed_size]
 
-            output = tf.sigmoid(tf.matmul(tf.concat(1, [rnn_output, q_vec]), U) + b_p)
-            return output
+            final_story_encoding = tf.reshape(final_story_encoding, [ self.config.batch_size, 1 , self.config.embed_size ] )
+            story_list = []
+            for i in range(self.config.batch_size):
+                single_story = tf.slice( final_story_encoding, [i, 0, 0] , [1, 1, self.config.embed_size] )
+                single_story = tf.reshape(single_story, [1, self.config.embed_size])
+                story_list.append(single_story)
+            choice_list = []
+	    for i in range(self.config.batch_size):
+                choices_single_story = tf.slice( z_vec, [i, 0, 0] , [1, self.config.choice_num , self.config.embed_size] )
+                choices_single_story = tf.reshape( choices_single_story, [self.config.choice_num, self.config.embed_size] )
+                choice_list.append( choices_single_story )
+
+            assert len(story_list) == len(choice_list), "stroy_size is not equal to choice size, exiting !!!"
+            answer_list = []
+            for i in range(len(story_list)):
+                single_story = story_list[i]  #single story : [1, self.config.embed_size]
+                choices_single_story = choice_list[i] # [self.config.choice_num, self.config.embed_size]
+                four_answer_list = []
+                for j in range(self.config.choice_num): # compute the cosine similarity between the context and the four choices
+                    single_choice = tf.slice( choices_single_story, [j,0], [1,self.config.embed_size] )
+                    choice_norm = tf.sqrt( tf.reduce_sum( tf.square(single_choice) ) )  # [1, self.config.embed_size]
+                    story_norm = tf.sqrt( tf.reduce_sum( tf.square(single_story)) )
+                    norm = tf.mul( story_norm , choice_norm ) # (story_norm float32, choice_norm int64)
+
+                    #single_answer = tf.divide( tf.matmul( single_story , tf.transpose(single_choice,perm=[1,0]) ) , norm )
+                    single_answer = tf.div( tf.matmul( single_story , tf.transpose(single_choice,perm=[1,0]) ) , norm )
+                    four_answer_list.append(single_answer)
+
+                #answer = tf.stack(four_answer_list) # [ 1, self.config.choice_num]
+                answer = tf.pack(four_answer_list) # [ 1, self.config.choice_num]
+                answer_list.append(answer)
+            #answer = tf.stack(answer_list) # [ batch_size, 1, self.config.choice_num]
+            answer = tf.pack(answer_list) # [ batch_size, 1, self.config.choice_num]
+            answer = tf.reshape(answer, [self.config.batch_size, self.config.choice_num] )
+        return answer
 
     def inference(self):
         """Performs inference on the DMN model"""
@@ -323,7 +390,38 @@ class DMN_PLUS(object):
         with tf.variable_scope("question", initializer=_xavier_weight_init()):
             print '==> get question representation'
             q_vec = self.get_question_representation(embeddings)
-         
+
+        ##
+        z_vec=[] 
+        with tf.variable_scope("choice", initializer=_xavier_weight_init()):#, reuse=True):
+            print '==> get choice representation'
+            choices = tf.slice( self.choice_placeholder, [0,0,0], [1, self.config.batch_size, self.max_z_len] )
+            choices = tf.reshape( choices, [self.config.batch_size, self.max_z_len] )
+            choice_length = tf.gather ( self.choice_len_placeholder, 0 )
+            z_vec.append(self.get_choice_representation(embeddings, choices, choice_length))
+
+        with tf.variable_scope("choice", initializer=_xavier_weight_init(), reuse=True):
+            print '==> get choice representation'
+            choices = tf.slice( self.choice_placeholder, [1,0,0], [1, self.config.batch_size, self.max_z_len] )
+            choices = tf.reshape( choices, [self.config.batch_size, self.max_z_len] )
+            choice_length = tf.gather ( self.choice_len_placeholder, 1 )
+            z_vec.append(self.get_choice_representation(embeddings, choices, choice_length))
+
+        with tf.variable_scope("choice", initializer=_xavier_weight_init(), reuse=True):
+            print '==> get choice representation'
+            choices = tf.slice( self.choice_placeholder, [2,0,0], [1, self.config.batch_size, self.max_z_len] )
+            choices = tf.reshape( choices, [self.config.batch_size, self.max_z_len] )
+            choice_length = tf.gather ( self.choice_len_placeholder, 2 )
+            z_vec.append(self.get_choice_representation(embeddings, choices, choice_length))
+
+        with tf.variable_scope("choice", initializer=_xavier_weight_init(), reuse=True):
+            print '==> get choice representation'
+            choices = tf.slice( self.choice_placeholder, [3,0,0], [1, self.config.batch_size, self.max_z_len] )
+            choices = tf.reshape( choices, [self.config.batch_size, self.max_z_len] )
+            choice_length = tf.gather ( self.choice_len_placeholder, 3 )
+            z_vec.append(self.get_choice_representation(embeddings, choices, choice_length))
+
+        #sys.exit()
 
         with tf.variable_scope("input", initializer=_xavier_weight_init()):
             print '==> get input representation'
@@ -354,7 +452,7 @@ class DMN_PLUS(object):
             output = prev_memory
 
         # pass memory module output through linear answer module
-        output = self.add_answer_module(output, q_vec)
+        output = self.add_answer_module(output, q_vec, z_vec)
 
         return output
 
@@ -369,14 +467,13 @@ class DMN_PLUS(object):
         total_loss = []
         accuracy = 0
 
-        #print "*data[0]=",(data[0])
-        #print "*len(data[0])=",len(data[0])
-        #print "****total_steps=",total_steps
- 
         # shuffle data
         p = np.random.permutation(len(data[0]))
-        qp, ip, ql, il, im, a, r = data
-        qp, ip, ql, il, im, a, r = qp[p], ip[p], ql[p], il[p], im[p], a[p], r[p]
+        #qp, ip, ql, il, im, a, r = data
+        #qp, ip, ql, il, im, a, r = qp[p], ip[p], ql[p], il[p], im[p], a[p], r[p]
+
+        qp, ip, ql, il, im, a, r, zp, zl = data
+        qp, ip, ql, il, im, a, r, zp, zl = qp[p], ip[p], ql[p], il[p], im[p], a[p], r[p], [zp[0][p], zp[1][p], zp[2][p], zp[3][p]], [zl[0][p], zl[1][p], zl[2][p], zl[3][p]]
 
         for step in range(total_steps):
             index = range(step*config.batch_size,(step+1)*config.batch_size)
@@ -386,17 +483,17 @@ class DMN_PLUS(object):
                   self.input_len_placeholder: il[index],
                   self.answer_placeholder: a[index],
                   self.rel_label_placeholder: r[index],
-                  self.dropout_placeholder: dp}
+                  self.dropout_placeholder: dp,
+                  ##
+                  self.choice_placeholder: [zp[0][index], zp[1][index], zp[2][index], zp[3][index]],
+                  self.choice_len_placeholder: [zl[0][index], zl[1][index], zl[2][index], zl[3][index]]}
+                  ##
             loss, pred, summary, _ = session.run(
               [self.calculate_loss, self.pred, self.merged, train_op], feed_dict=feed)
 
             if train_writer is not None:
                 train_writer.add_summary(summary, num_epoch*total_steps + step)
 
-            pred = np.reshape(pred, (-1,))
-            pred[pred < 0.5] = 0
-            pred[pred >= 0.5] = 1
-            pred = pred.astype(np.int64)
             answers = a[step*config.batch_size:(step+1)*config.batch_size]
             accuracy += np.sum(pred == answers)/float(len(answers))
 
@@ -405,7 +502,6 @@ class DMN_PLUS(object):
                 sys.stdout.write('\r{} / {} : loss = {}'.format(
                   step, total_steps, np.mean(total_loss)))
                 sys.stdout.flush()
-
 
         if verbose:
             sys.stdout.write('\r')
